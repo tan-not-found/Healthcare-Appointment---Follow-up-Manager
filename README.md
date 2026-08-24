@@ -1,78 +1,87 @@
 # Carepath Clinic Manager
 
-A calm, role-aware healthcare appointment workspace for patients, doctors, and clinic admins. The included UI is a runnable demo with local state; `server/index.js` is an executable API reference for the booking reliability rules.
+> A calmer way to coordinate appointments, symptoms, and follow-up care.
 
-## Run locally
+Carepath is a role-aware healthcare workspace with dedicated experiences for patients, doctors, and clinic administrators. Patients can prepare for visits and book care, doctors can review pre-visit context, and admins can monitor clinic operations.
 
-Requirements: Node.js 20+.
+## What is included
+
+| Workspace | Experience |
+| --- | --- |
+| Patient | Sign in with a name, view the next appointment, complete preparation tasks, and book a visit with symptoms and a preferred slot. |
+| Doctor | Review today’s schedule, open appointment details, and launch a pre-visit review queue. |
+| Admin | View clinic metrics, doctor availability, leave status, and recent activity. |
+
+The interface includes dynamic greetings, responsive layouts, role-aware actions, appointment detail dialogs, selected-slot booking, symptom validation, and browser persistence for the signed-in demo profile.
+
+## Quick start
+
+**Requirements:** Node.js 20 or newer.
 
 ```bash
 npm install
 npm run dev
 ```
 
-Open the Vite URL shown in the terminal. The role switcher in the top-right lets you inspect Patient, Doctor, and Admin portals. The booking flow captures symptoms and confirms a slot with a success notification.
+Open `http://localhost:5173/`. Enter a name, choose Patient, Doctor, or Admin, and sign in. The demo profile is saved in browser storage, so the name and role survive a refresh.
 
-Run the API separately with `npm run server`; health check: `GET http://localhost:4000/api/health`.
+Run the API reference separately:
 
-Copy `.env.example` to `.env` for production integrations. The demo intentionally keeps frontend data in memory so it can be reviewed without credentials or a database.
+```bash
+npm run server
+```
 
-## API
+Check it at `http://localhost:4000/api/health`.
 
-- `GET /api/doctors?specialty=Cardiology` searches available doctors.
-- `POST /api/appointments/hold` accepts `{ doctorId, patientId, startsAt }`. Holds last five minutes.
-- `POST /api/appointments/confirm` accepts `{ holdId, symptoms }`, creates the appointment, and returns a fallback-safe pre-visit summary.
-- `POST /api/doctors/:id/leave` accepts `{ date }`, records leave, and returns affected bookings plus notification count.
-- `POST /api/appointments/:id/complete` accepts `{ notes, prescription }` and returns a patient-friendly post-visit summary.
+## Deploy
 
-A production adapter should add JWT middleware and replace the in-memory maps with the schema below. All clients should treat `409` as a recoverable slot conflict and refresh availability.
+This project can run as one Node service on Render, Railway, or a similar host:
 
-## Database schema
+```bash
+npm install
+npm run build
+npm start
+```
 
-See `docs/schema.sql`. Important constraints are the exclusion constraint on doctor/time ranges, a unique active hold per doctor/time, and an idempotency key for webhook and notification retries.
+Use `npm run build` as the build command and `npm start` as the start command. Express serves the generated `dist` frontend and API from the same process. The host supplies `PORT`; local development defaults to `4000`.
 
-Core tables: `users`, `doctor_profiles`, `doctor_availability`, `doctor_leave`, `appointments`, `symptom_intakes`, `clinical_notes`, `prescriptions`, `notifications`, and `calendar_connections`.
+Copy `.env.example` to `.env` and configure provider credentials before enabling external services. Never commit `.env` or real patient information.
 
-## LLM prompts
+## API reference
 
-### Pre-visit
+The runnable backend demonstrates the key reliability contracts:
 
-System: `You are a clinical documentation assistant. Summarize patient-reported symptoms without diagnosing. Return strict JSON only: urgency (Low, Medium, or High), chiefComplaint, and suggestedQuestions (exactly three strings). Escalate urgency only for symptoms that may need prompt clinical review. Include a disclaimer that a clinician must make medical decisions.`
+- `GET /api/doctors?specialty=Cardiology` searches doctors.
+- `POST /api/appointments/hold` creates a five-minute slot hold.
+- `POST /api/appointments/confirm` confirms a hold with symptom context.
+- `POST /api/doctors/:id/leave` records leave and reports affected bookings.
+- `POST /api/appointments/:id/complete` stores notes and a patient-friendly fallback summary.
 
-User: `Symptoms: {{symptoms}}. Appointment type: {{appointmentType}}.`
+Full role and request details are in [docs/api.md](docs/api.md). A production adapter should add JWT authentication and replace the in-memory API maps with the PostgreSQL design in [docs/schema.sql](docs/schema.sql). Clients should treat `409` responses as recoverable slot conflicts.
 
-### Post-visit
+## AI and notifications
 
-System: `You are a patient education assistant. Convert clinician notes into plain, warm language without adding facts or changing dosage. Return strict JSON only: summary, medicationSchedule, followUp, and warningSigns. Keep medicationSchedule tied exactly to the prescription. Remind the patient to contact the clinic with questions.`
+The documented pre-visit prompt returns urgency, chief complaint, and three suggested questions. The post-visit prompt produces a plain-language summary, medication schedule, follow-up, and warning signs. Prompts are included in this README and should be validated against a strict JSON schema in production.
 
-User: `Clinical notes: {{notes}}. Prescription: {{prescription}}.`
+LLM failures use a safe, non-diagnostic fallback and must not block booking or visit completion. Email and Google Calendar are designed as outbox jobs with idempotency keys, retries, and dead-letter visibility. Setup steps and OAuth requirements are documented in [docs/api.md](docs/api.md) and [`.env.example`](.env.example).
 
-LLM output is stored with model/version metadata. On timeout, malformed JSON, rate limit, or provider outage, the appointment still completes: the API stores a safe template fallback and queues a retry for staff review.
+## System design highlights
 
-## Email and Google Calendar
+**Double booking:** Production confirmation uses a serializable transaction and a PostgreSQL exclusion constraint on each doctor’s time range. Five-minute holds prevent checkout races; one request succeeds and the other receives `409 SLOT_UNAVAILABLE`.
 
-1. Create a SendGrid sender identity and set `SENDGRID_API_KEY`.
-2. Create a Google Cloud project, enable Google Calendar API, configure OAuth consent screen, and create a Web application OAuth client.
-3. Add `http://localhost:4000/api/calendar/callback` (and the deployed callback) to authorized redirect URIs.
-4. Set `GOOGLE_CLIENT_ID`, `GOOGLE_CLIENT_SECRET`, and `GOOGLE_REDIRECT_URI`.
-5. Request `https://www.googleapis.com/auth/calendar.events` during consent. Encrypt refresh tokens at rest.
+**Leave conflicts:** Leave creation rechecks overlapping holds and confirmed visits, moves affected visits to `needs_reschedule`, and queues patient and doctor notifications. Booking checks leave again inside its transaction.
 
-Booking sends one email to the patient and doctor and creates two attendees on one calendar event. Reschedule updates the event; cancellation deletes it. Email and calendar operations are queue jobs with exponential retry, a dead-letter state, and an admin-visible failure record. They never roll back a successfully committed appointment.
+**Reliable side effects:** Appointment state is committed before email or calendar work begins. Outbox jobs retry with backoff and idempotency keys, so failed notifications never undo a valid appointment.
 
-## System design
+**Privacy:** Production deployment should add encrypted storage, audit logs, consent and retention policies, least-privilege role middleware, and real password hashing. The included browser persistence is for demonstration only, not clinical data storage.
 
-**Double booking.** Availability is calculated from recurring working hours minus leave and existing appointments. The client may request a five-minute hold for a candidate slot, but the server is authoritative. In production, confirmation runs in a database transaction at `SERIALIZABLE` isolation and inserts a time range protected by a PostgreSQL exclusion constraint (`doctor_id WITH =`, `tstzrange WITH &&`). A unique active-hold index prevents two holds for the same doctor and start time. One request commits; the other receives `409 SLOT_UNAVAILABLE`. A hold has a TTL and is released by expiry or confirmation.
+## Package the source
 
-**Leave conflicts.** Admin leave creation is transactional. It first locks the doctor row, records the date, and queries overlapping confirmed or held appointments. Existing appointments are not silently deleted: they move to `needs_reschedule`, and one notification job is enqueued for each patient and doctor. Patients receive replacement slots; staff can bulk reschedule. A booking transaction checks leave again, so a race between leave creation and booking cannot create a new conflict.
-
-**Notification reliability.** Appointment state is committed before side effects. An outbox row is written in the same transaction, then a worker sends email and calendar commands. Each job has an idempotency key, exponential backoff, a maximum retry count, and a dead-letter status. Calendar event IDs are stored per participant connection, making update and delete operations repeatable. Admins see delivery state and can retry failed jobs. Medication reminders are scheduled from prescription frequency and are suppressed when a prescription is discontinued.
-
-**LLM and privacy.** Prompts contain only the minimum clinical context needed. Outputs are validated against a JSON schema and stored separately from the source notes. Failures fall back to a non-diagnostic template and never block booking or visit completion. Production deployment should enforce encryption at rest, audit logs, consent, retention rules, and least-privilege role middleware.
-
-## Packaging
-
-Create a source archive from the project root with:
+From the project root, create an archive without dependencies or generated output:
 
 ```powershell
-Compress-Archive -Path .\* -DestinationPath .\carepath-clinic-manager.zip -Force
+Remove-Item .\carepath-clinic-manager.zip -Force -ErrorAction SilentlyContinue
+Get-ChildItem -Recurse -File |
+	Where-Object { $_.FullName -notmatch '\\node_modules\\|\\dist\\|carepath-clinic-manager\.zip$' } |
+	Compress-Archive -DestinationPath .\carepath-clinic-manager.zip -Force
 ```

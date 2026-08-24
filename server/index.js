@@ -1,7 +1,13 @@
 import express from 'express';
+import path from 'node:path';
+import { fileURLToPath } from 'node:url';
 
 const app = express();
 app.use(express.json());
+
+const projectRoot = path.dirname(fileURLToPath(import.meta.url));
+const frontendRoot = path.join(projectRoot, '..', 'dist');
+app.use(express.static(frontendRoot));
 
 const doctors = [
 	{ id: 'doc_1', name: 'Dr. Maya Patel', specialty: 'Family medicine', slotMinutes: 30, leaveDays: [] },
@@ -57,6 +63,11 @@ app.post('/api/appointments/:id/complete', (req, res) => {
 	appointment.postVisitSummary = buildFallbackSummary(appointment.notes, true);
 	appointment.status = 'completed';
 	res.json(appointment);
+});
+
+app.use((req, res, next) => {
+	if (req.path.startsWith('/api/')) return next();
+	res.sendFile(path.join(frontendRoot, 'index.html'));
 });
 
 function buildFallbackSummary(text, postVisit = false) {
