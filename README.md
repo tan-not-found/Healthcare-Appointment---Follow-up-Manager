@@ -8,13 +8,13 @@ Carepath is a role-aware healthcare workspace with dedicated experiences for pat
 
 | Workspace | Experience |
 | --- | --- |
-| Patient | Sign in with a name, view the next appointment, complete preparation tasks, and book a visit with symptoms and a preferred slot. |
-| Doctor | Review today’s schedule, open appointment details, and launch a pre-visit review queue. |
-| Admin | View clinic metrics, doctor availability, leave status, and recent activity. |
+| 👤 Patient | Sign in with a name, view the next appointment, complete preparation tasks, and book a visit with symptoms and a preferred slot. |
+| 🩺 Doctor | Review today’s schedule, open appointment details, and launch a pre-visit review queue. |
+| 🛠️ Admin | View clinic metrics, doctor availability, leave status, and recent activity. |
 
 The interface includes dynamic greetings, responsive layouts, role-aware actions, appointment detail dialogs, selected-slot booking, symptom validation, and browser persistence for the signed-in demo profile.
 
-## Quick start
+## 🚀 Quick start
 
 **Requirements:** Node.js 20 or newer.
 
@@ -33,7 +33,7 @@ npm run server
 
 Check it at `http://localhost:4000/api/health`.
 
-## Deploy
+## 🚀 Deploy
 
 This project can run as one Node service on Render, Railway, or a similar host:
 
@@ -47,7 +47,7 @@ Use `npm run build` as the build command and `npm start` as the start command. E
 
 Copy `.env.example` to `.env` and configure provider credentials before enabling external services. Never commit `.env` or real patient information.
 
-## API reference
+## 🔌 API reference
 
 The runnable backend demonstrates the key reliability contracts:
 
@@ -59,13 +59,13 @@ The runnable backend demonstrates the key reliability contracts:
 
 Full role and request details are in [docs/api.md](docs/api.md). A production adapter should add JWT authentication and replace the in-memory API maps with the PostgreSQL design in [docs/schema.sql](docs/schema.sql). Clients should treat `409` responses as recoverable slot conflicts.
 
-## AI and notifications
+## 🤖 AI and notifications
 
 The documented pre-visit prompt returns urgency, chief complaint, and three suggested questions. The post-visit prompt produces a plain-language summary, medication schedule, follow-up, and warning signs. Prompts are included in this README and should be validated against a strict JSON schema in production.
 
 LLM failures use a safe, non-diagnostic fallback and must not block booking or visit completion. Email and Google Calendar are designed as outbox jobs with idempotency keys, retries, and dead-letter visibility. Setup steps and OAuth requirements are documented in [docs/api.md](docs/api.md) and [`.env.example`](.env.example).
 
-## System design highlights
+## 🧭 System design highlights
 
 **Double booking:** Production confirmation uses a serializable transaction and a PostgreSQL exclusion constraint on each doctor’s time range. Five-minute holds prevent checkout races; one request succeeds and the other receives `409 SLOT_UNAVAILABLE`.
 
@@ -73,7 +73,7 @@ LLM failures use a safe, non-diagnostic fallback and must not block booking or v
 
 **Reliable side effects:** Appointment state is committed before email or calendar work begins. Outbox jobs retry with backoff and idempotency keys, so failed notifications never undo a valid appointment.
 
-**Privacy:** Production deployment should add encrypted storage, audit logs, consent and retention policies, least-privilege role middleware, and real password hashing. The included browser persistence is for demonstration only, not clinical data storage.
+**🔒 Privacy:** Production deployment should add encrypted storage, audit logs, consent and retention policies, least-privilege role middleware, and real password hashing. The included browser persistence is for demonstration only, not clinical data storage.
 
 ## Package the source
 
